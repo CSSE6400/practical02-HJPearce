@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request 
 from todo.models import db 
 from todo.models.todo import Todo 
-from datetime import datetime
+from datetime import datetime, timedelta
  
 api = Blueprint('api', __name__, url_prefix='/api/v1') 
 
@@ -23,10 +23,27 @@ def health():
 
 @api.route('/todos', methods=['GET']) 
 def get_todos(): 
+   args = request.args
    todos = Todo.query.all() 
    result = [] 
-   for todo in todos: 
-      result.append(todo.to_dict()) 
+   for todo in todos:
+      include_todo = True
+
+      # filter by whether tasks are done
+      if "completed" in args.keys():
+         #should be outside of loop but can't be assed
+         if args.get('completed') not in ['true', 'false']:
+            return {'error':'completed value not valid. use either "true" or "false"'}, 400
+         include_todo = include_todo and (args.get("completed").lower() == str(todo.completed).lower())
+      
+      # window checks due more than n days away
+      if "window" in args.keys():
+         current = datetime.now()
+         mindelta = timedelta(days=int(args.get('window')))
+         include_todo = include_todo and (todo.deadline_at - current <= mindelta)
+
+      if include_todo:
+         result.append(todo.to_dict()) 
    return jsonify(result)
 
 @api.route('/todos/<int:todo_id>', methods=['GET'])
@@ -43,7 +60,13 @@ def create_todo():
       title=request.json.get('title'), 
       description=request.json.get('description'), 
       completed=request.json.get('completed', False), 
-   ) 
+   )
+
+   if todo.title == None:
+      return {'error': 'Todo Title must be non-null'}, 400
+   if len([a for a in request.json.keys() if a not in todo.to_dict().keys()]) > 0:
+      return {'error': 'Extra request fields not accepted'}, 400
+
    if 'deadline_at' in request.json: 
       todo.deadline_at = datetime.fromisoformat(request.json.get('deadline_at')) 
  
@@ -58,11 +81,15 @@ def update_todo(todo_id):
    todo = Todo.query.get(todo_id) 
    if todo is None: 
       return jsonify({'error': 'Todo not found'}), 404 
- 
+   if len([a for a in request.json.keys() if a not in todo.to_dict().keys()]) > 0:
+      return {'error': 'Extra request fields not accepted'}, 400
+   if request.json.get('id', todo.id) != todo.id:
+      return {'error': 'ID field cannot be manually changed'}, 400
+
    todo.title = request.json.get('title', todo.title) 
    todo.description = request.json.get('description', todo.description) 
    todo.completed = request.json.get('completed', todo.completed) 
-   todo.deadline_at = request.json.get('deadline_at', todo.deadline_at) 
+   todo.deadline_at = request.json.get('deadline_at', todo.deadline_at)
    db.session.commit() 
  
    return jsonify(todo.to_dict())

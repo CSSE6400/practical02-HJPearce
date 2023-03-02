@@ -1,0 +1,15 @@
+*.sqlite
+*.pyc 
+*.pyo
+*.exe
+*.dll
+*.so
+*.a
+*.o
+*.obj
+*.lib
+*.sqlite3 
+*.sqlite-journal 
+*.db 
+*.db-journal
+.vscode/
